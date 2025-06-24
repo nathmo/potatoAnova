@@ -2,8 +2,10 @@
 output: 
   pdf_document:
       number_sections: true
+      citation_package: natbib 
 fontsize: 12pt
 geometry: margin=2.5cm
+bibliography: references.bib
 header-includes:
   - \usepackage{fancyhdr}  # Custom headers/footers
   - \pagestyle{fancy}       # Enable fancy headers/footers
@@ -56,13 +58,13 @@ potato$Cooking <- factor(potato$Cooking, levels = c(1, 2, 3, 4, 5), labels = c("
 ```
 
 ## Exploratory Data Analysis (EDA)
-```{r, echo=FALSE, , message=FALSE, warning=FALSE}
+```{r, echo=FALSE, , message=FALSE, warning=FALSE, fig.align='center', fig.width=5, fig.height=4}
 
 # Split dataset into categorical and numerical subsets
 categorical_vars <- potato[, sapply(potato, is.factor)]
-numeric_vars <- potato[, c("Texture", "Flavor", "Moistness")]  # Select only the 3 numeric variables
+numeric_vars <- potato[, c("Texture", "Flavor", "Moistness")]
 
-# Compute summary statistics (Min, 1st Quartile, Median, Mean, 3rd Quartile, Max)
+# Summary table (same code as avant)
 summary_numeric <- numeric_vars %>%
   summarise(
     Min = sapply(., min, na.rm = TRUE),
@@ -72,37 +74,40 @@ summary_numeric <- numeric_vars %>%
     `3rd Quartile` = sapply(., quantile, probs = 0.75, na.rm = TRUE),
     Max = sapply(., max, na.rm = TRUE)
   )
-
-# Transpose for better readability
 summary_num_df <- summary_numeric %>%
   t() %>%
   as.data.frame() %>%
   rownames_to_column(var = "Statistic")
-
-# Rename columns properly
 colnames(summary_num_df) <- c("Statistic", "Texture", "Flavor", "Moistness")
-
-# Format numeric values to 2 significant digits
 summary_num_df[, 2:4] <- lapply(summary_num_df[, 2:4], function(x) format(round(as.numeric(x), 2), nsmall = 2))
 
-# Display categorical summary (Transposed)
 summary_categorical <- lapply(categorical_vars, summary)
 summary_cat_df <- bind_rows(lapply(summary_categorical, function(x) as.data.frame(t(x))), .id = "Variable")
-
-# Replace NA values with whitespace
 summary_cat_df[is.na(summary_cat_df)] <- ""
 
-# Display categorical table with 90° rotated headers
 kable(summary_cat_df, caption = "Summary Statistics (Categorical Variables)", longtable = TRUE) %>%
   kable_styling(latex_options = c("hold_position", "repeat_header")) %>%
-  row_spec(0, angle = 90)  # Rotate column headers to 90°
+  row_spec(0, angle = 90)
 
+# Boxplot
 boxplot(potato$Texture, potato$Flavor, potato$Moistness,
         names = c("Texture", "Flavor", "Moistness"),
         ylab = "Score",
+        main = "Distribution of Texture, Flavor, and Moistness Scores",
         col = c("lightblue", "lightgreen", "lightcoral"))
 ```
 
+The boxplot shows the scores for Texture, Flavor, and Moistness.
+
+- Flavor has the highest median and the scores are quite consistent.
+
+- Moistness has more variation and shows some outliers (small dots below the box).
+
+- Texture has no visible outliers and a moderate spread.
+
+Overall, Flavor is the best-rated and most stable, while Moistness is more variable and sometimes poorly rated.
+
+\newpage
 ## Mathematical Model
 
 The general form of our ANOVA model is:
@@ -120,24 +125,27 @@ The general form of our ANOVA model is:
 &+ \beta_8 \cdot \text{Cooking}_{\text{Mash}} \\  
 &+ \beta_9 \cdot \text{Cooking}_{\text{Bake@350}^{\circ}F} \\  
 &+ \beta_{10} \cdot \text{Cooking}_{\text{Bake@450}^{\circ}F} \\  
-&+ \epsilon  
 \end{aligned}
 \]
 
 where:  
-- \( \hat{Y} \) is the predicted **Flavor Score**  
-- \( \beta_i \) are the coefficients estimated from data  
-- \( XXXX_i \) are indicator variables (ANOVA encoding), where \( X_i = 1 \) if the corresponding factor is present and \( X_i = 0 \) otherwise. The first level of each categorical variable is assumed present by default and thus not listed.  
-- \( \epsilon \sim N(0, \sigma^2) \) represents residual errors.  
+- \( \hat{Y} \) is the predicted **Flavor Score**.  
+- \( \beta_i \) are the coefficients associated with the explanatory variables. Each \( i \) refers to a specific level of a categorical factor (excluding the reference level).  
+- \( X_i \) are **indicator (dummy) variables** used in ANOVA encoding. For a given categorical variable, the first level is used as a reference, and all other levels are represented by binary variables:  
+  \( X_i = 1 \) if the observation belongs to that level, and \( X_i = 0 \) otherwise.  
 
 
 ## Model Assumptions
 
 For the ANOVA model to be valid, the following assumptions must hold:  
-1. **Independence**: Observations are independent.  
-2. **Normality**: Residuals follow a normal distribution.  
-3. **Homoscedasticity**: Residuals have constant variance.  
-4. **No Multicollinearity**: Predictors are not highly correlated.  
+
+- Errors have zero mean: On average, the residuals should be centered around zero.
+
+- Errors are homoscedastic: The residuals should have constant variance across all levels of the predictors (no funnel-shaped patterns).
+
+- Errors are uncorrelated: There should be no systematic patterns or autocorrelation among the residuals.
+
+- Errors are normally distributed: The residuals should approximately follow a normal distribution, especially important for valid hypothesis testing.
 
 ## Model Fitting
 
@@ -159,7 +167,7 @@ kable(anova_results, digits = 2, caption = "ANOVA Results for Flavor Score", boo
 
 ## Model Selection
 
-We refine our model using stepwise selection based on Akaike’s Information Criterion (AIC). We see that the Size has a very large P value and thus can be removed from the model without compromising it's predictive power.
+We refine our model using stepwise selection based on Akaike’s Information Criterion (AIC). We see that the Size has a very large P value and thus can be removed from the model without compromising its predictive power.
 
 ```{r, echo=FALSE , message=FALSE, warning=FALSE}
 stepwise_model <- step(anova_model, trace = 0)  # Run stepwise selection quietly
@@ -204,9 +212,6 @@ coeff_values <- signif(coeffs, 2)  # Round to 2 significant digits
 variable_names <- names(coeffs)[-1]  # Exclude intercept
 variable_names <- sapply(variable_names, sanitize_latex)  # Apply sanitization
 
-# Estimate standard deviation of residuals
-sigma_hat <- signif(summary(linear_model)$sigma, 2)  # Extract and round residual SD
-
 # Start LaTeX equation
 equation_text <- "\\begin{aligned} \\hat{Y} &= "  
 
@@ -216,13 +221,11 @@ equation_text <- paste0(equation_text, signif(coeffs[1], 2), " \\\\ ")
 # Loop through remaining coefficients
 for (i in seq_along(variable_names)) {
   sign <- ifelse(coeff_values[i + 1] >= 0, "&+ ", "&- ")  # Align sign
-  equation_text <- paste0(equation_text, sign, abs(coeff_values[i + 1]), " \\cdot", " ", variable_names[i], " \\\\ ")
+  equation_text <- paste0(equation_text, sign, abs(coeff_values[i + 1]), " \\cdot ", variable_names[i], " \\\\ ")
 }
 
-# Add epsilon term with normal distribution
-equation_text <- paste0(equation_text, "&+ \\epsilon, \\quad \\epsilon \\sim \\mathcal{N}(0, ", sigma_hat, "^2) \\end{aligned}")
-
-# Print equation in R Markdown
+# End equation (no epsilon term)
+equation_text <- paste0(equation_text, "\\end{aligned}")
 
 ```
 $$
@@ -244,7 +247,14 @@ qqline(residuals(anova_model), col = "red")
 plot(fitted(anova_model), residuals(anova_model),
      main = "Residuals vs Fitted", xlab = "Fitted Values", ylab = "Residuals")
 abline(h = 0, col = "red", lty = 2)
+
 ```
+
+The Q–Q plot shows that the residuals follow the red line closely, especially in the center. That means the residuals are approximately normally distributed, which supports the normality assumption.
+
+In the residuals vs fitted plot, the points are scattered randomly around zero with no clear pattern. That suggests the variance is roughly constant (homoscedasticity). There's no obvious funnel shape or curve, so the model seems appropriate.
+
+Overall, the residual diagnostics support the assumptions of the ANOVA model.
 
 ## Conclusion
 
@@ -268,3 +278,9 @@ This study analyzed the factors influencing the **flavor score** of Oregon-grown
 - **Storage at moderate temperatures and baking at 350°F** maximizes potato flavor.  
 - **Cold storage (40°F) negatively affects flavor**, which may influence **storage and distribution practices**.  
 - **Cooking methods play a crucial role**; steaming and high-temperature baking should be avoided for better flavor retention.  
+
+# References
+\renewcommand\refname{}
+\renewcommand\bibname{}
+\nocite{*}
+
