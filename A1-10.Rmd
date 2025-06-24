@@ -19,7 +19,7 @@ header-includes:
 # A1-10, ANOVA Potato
 
 ## Introduction
-This study investigates the cooking quality of Oregon-grown Russet potatoes. Specifically, it examines how different growing areas, storage conditions, and cooking methods affect the flavor of the potatoes. The `Flavor score` is modeled as a function of:
+This study investigates the cooking quality of Oregon-grown Russet potatoes. Specifically, it examines how different growing areas, storage conditions, and cooking methods relate to the flavor of the potatoes. The `Flavor score` is modeled as a function of:
 
 - **Growing Area**: Southern Oregon vs. Central Oregon
 - **Two-week Holding Temperature**: 75°F vs. 40°F
@@ -58,7 +58,7 @@ potato$Cooking <- factor(potato$Cooking, levels = c(1, 2, 3, 4, 5), labels = c("
 ```
 
 ## Exploratory Data Analysis (EDA)
-```{r, echo=FALSE, , message=FALSE, warning=FALSE, fig.align='center', fig.width=5, fig.height=4}
+```{r sumarrystat, fig.align='center', fig.width=5, fig.height=4, echo=FALSE, warning=FALSE, message=FALSE, fig.pos='H'}
 
 # Split dataset into categorical and numerical subsets
 categorical_vars <- potato[, sapply(potato, is.factor)]
@@ -89,32 +89,86 @@ kable(summary_cat_df, caption = "Summary Statistics (Categorical Variables)", lo
   kable_styling(latex_options = c("hold_position", "repeat_header")) %>%
   row_spec(0, angle = 90)
 
-# Boxplot
-boxplot(potato$Texture, potato$Flavor, potato$Moistness,
-        names = c("Texture", "Flavor", "Moistness"),
-        ylab = "Score",
-        main = "Distribution of Texture, Flavor, and Moistness Scores",
-        col = c("lightblue", "lightgreen", "lightcoral"))
 ```
 
-The boxplot shows the scores for Texture, Flavor, and Moistness.
+```{r sumarrystatnumerical, fig.align='center', fig.width=7, fig.height=4, echo=FALSE, warning=FALSE, message=FALSE, fig.pos='H'}
 
-- Flavor has the highest median and the scores are quite consistent.
+library(dplyr)
+library(knitr)
+library(kableExtra)
 
-- Moistness has more variation and shows some outliers (small dots below the box).
+library(dplyr)
+library(knitr)
+library(kableExtra)
 
-- Texture has no visible outliers and a moderate spread.
+get_mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
 
-Overall, Flavor is the best-rated and most stable, while Moistness is more variable and sometimes poorly rated.
+# Compute statistics manually
+summary_stats <- tibble(
+  Statistic = c("Mean", "Median", "Mode", "SD", "Min", "Max"),
+  Texture = c(mean(potato$Texture), median(potato$Texture), get_mode(potato$Texture),
+              sd(potato$Texture), min(potato$Texture), max(potato$Texture)),
+  Flavor = c(mean(potato$Flavor), median(potato$Flavor), get_mode(potato$Flavor),
+             sd(potato$Flavor), min(potato$Flavor), max(potato$Flavor)),
+  Moistness = c(mean(potato$Moistness), median(potato$Moistness), get_mode(potato$Moistness),
+                sd(potato$Moistness), min(potato$Moistness), max(potato$Moistness))
+)
 
-\newpage
-## Mathematical Model
+# Round for display
+summary_stats[, 2:4] <- round(summary_stats[, 2:4], 2)
+
+# Display table
+kable(summary_stats, caption = "Summary Statistics of Numerical Variables") %>%
+  kable_styling(latex_options = c("hold_position"))
+
+```
+
+```{r histogramnumerical, fig.cap='Histograms of all numerical variables.', fig.align='center', fig.width=7, fig.height=4.5, echo=FALSE, warning=FALSE, message=FALSE, fig.pos='H'}
+# Reshape the data into long format for ggplot
+library(tidyr)
+
+potato_long <- potato %>%
+  pivot_longer(cols = c(Texture, Flavor, Moistness), names_to = "Variable", values_to = "Value")
+
+# Plot histograms using ggplot2
+ggplot(potato_long, aes(x = Value)) +
+  geom_histogram(bins = 20, fill = "steelblue", color = "black", alpha = 0.8) +
+  facet_wrap(~ Variable, scales = "free", ncol = 1) +
+  theme_minimal() +
+  labs(title = "Histograms of Texture, Flavor, and Moistness",
+       x = "Score", y = "Frequency")
+
+```
+
+```{r scatterplot, fig.cap='scatterplot and correllation score between every pair of numerical variable', fig.align='center', fig.width=7, fig.height=3, echo=FALSE, warning=FALSE, message=FALSE, fig.pos='H'}
+
+library(GGally)
+
+# Select only numerical variables
+numeric_vars <- potato[, c("Texture", "Flavor", "Moistness")]
+
+# Create pairwise scatter plot matrix
+ggpairs(numeric_vars,
+        lower = list(continuous = wrap("points", alpha = 0.6, size = 1.5)),
+        diag = list(continuous = wrap("densityDiag", alpha = 0.5)),
+        upper = list(continuous = wrap("cor", size = 4))) +
+  theme_minimal()
+  
+```
+
+\newpage 
+Overall, the class are well balanced, the Moistness and Texture score are strongly correlated. Their distribution is nicely behaved but the Flavor score has some hole.
+
+## Model Fitting
 
 The general form of our ANOVA model is:
 
 \[
 \begin{aligned} 
-\hat{Y} &= \beta_0 \\  
+Y &= \beta_0 \\  
 &+ \beta_1 \cdot \text{Area}_{\text{Central Oregon}} \\  
 &+ \beta_2 \cdot \text{Temp}_{40^{\circ}F} \\  
 &+ \beta_3 \cdot \text{Size}_{\text{Medium}} \\  
@@ -124,75 +178,93 @@ The general form of our ANOVA model is:
 &+ \beta_7 \cdot \text{Cooking}_{\text{Steam}} \\  
 &+ \beta_8 \cdot \text{Cooking}_{\text{Mash}} \\  
 &+ \beta_9 \cdot \text{Cooking}_{\text{Bake@350}^{\circ}F} \\  
-&+ \beta_{10} \cdot \text{Cooking}_{\text{Bake@450}^{\circ}F} \\  
+&+ \beta_{10} \cdot \text{Cooking}_{\text{Bake@450}^{\circ}F} \\
+&+ \varepsilon
 \end{aligned}
 \]
 
 where:  
-- \( \hat{Y} \) is the predicted **Flavor Score**.  
-- \( \beta_i \) are the coefficients associated with the explanatory variables. Each \( i \) refers to a specific level of a categorical factor (excluding the reference level).  
-- \( X_i \) are **indicator (dummy) variables** used in ANOVA encoding. For a given categorical variable, the first level is used as a reference, and all other levels are represented by binary variables:  
-  \( X_i = 1 \) if the observation belongs to that level, and \( X_i = 0 \) otherwise.  
+
+- $Y$ is the predicted **Flavor Score**.  
+- $\beta_i$ are the coefficients associated with the explanatory variables.
+- $\text{Area}_{\text{Central Oregon}}$: effect of being grown in **Central Oregon** compared to **Southern Oregon**.
+- $\text{Temp}_{40^{\circ}F}$: effect of storing the potato at **40°F** compared to **75°F**.
+- $\text{Size}_{\text{Medium}}$: effect of using **Medium-sized** potatoes compared to **Large** ones.
+- $\text{Storage}_{\text{2 months}}$: effect of storing the potato for **2 months** compared to **0 months**.
+- $\text{Storage}_{\text{4 months}}$: effect of storing the potato for **4 months** compared to **0 months**.
+- $\text{Storage}_{\text{6 months}}$: effect of storing the potato for **6 months** compared to **0 months**.
+- $\text{Cooking}_{\text{Steam}}$: effect of **Steaming** compared to **Boiling**.
+- $\text{Cooking}_{\text{Mash}}$: effect of **Mashing** compared to **Boiling**.
+- $\text{Cooking}_{\text{Bake@350}^{\circ}F}$: effect of **Baking at 350°F** compared to **Boiling**.
+- $\text{Cooking}_{\text{Bake@450}^{\circ}F}$: effect of **Baking at 450°F** compared to **Boiling**.
+- $\varepsilon$: the **residual error**, capturing variation not explained by the model.
+
+The model is fitted using the least square method. 
+The model do not take interraction into account as it would likely lead to a poor fit given the limited number of observation.
+The model is selected by minimizing the Akaike Information Criterion (AIC). This work in a backward manner where parameters are itterratively eliminated to reach a good trade of between model strength and simplicity. 
 
 
-## Model Assumptions
+```{r modelfittingselect, echo=FALSE, , message=FALSE, warning=FALSE}
+# Fit ANOVA model
+# Load required package
+library(MASS)
 
+# Fit the full model (all main effects)
+anova_model <- lm(Flavor ~ Area + Temp + Size + Storage + Cooking, data = potato)
+
+# Perform stepwise model selection using AIC
+model_step <- stepAIC(anova_model, direction = "both", trace = FALSE)
+
+# Create a comparison table of AIC values
+aic_comparison <- data.frame(
+  Model = c("Original (Full)", "Final (StepAIC)"),
+  AIC = c(AIC(anova_model), AIC(model_step))
+)
+
+# Print AIC comparison table
+library(knitr)
+library(kableExtra)
+
+kable(aic_comparison, caption = "Comparison of AIC Before and After Model Selection") %>%
+  kable_styling(latex_options = c("hold_position"))
+
+
+```
+
+## Model assessment
 For the ANOVA model to be valid, the following assumptions must hold:  
 
-- Errors have zero mean: On average, the residuals should be centered around zero.
+Errors have zero mean: On average, the residuals should be centered around zero.
 
-- Errors are homoscedastic: The residuals should have constant variance across all levels of the predictors (no funnel-shaped patterns).
+Errors are homoscedastic: The residuals should have constant variance across all levels of the predictors.
 
-- Errors are uncorrelated: There should be no systematic patterns or autocorrelation among the residuals.
+Errors are uncorrelated: There should be no systematic patterns or autocorrelation among the residuals.
 
-- Errors are normally distributed: The residuals should approximately follow a normal distribution, especially important for valid hypothesis testing.
+Errors are normally distributed: The residuals should approximately follow a normal distribution.
 
-## Model Fitting
+```{r, fig.cap='QQ plot of residual and residuals vs fitted', fig.align='center', fig.width=7, fig.height=4, echo=FALSE, warning=FALSE, message=FALSE, fig.pos='H'}
+par(mfrow = c(1, 2))  # Arrange plots in one row
 
-```{r, echo=FALSE, , message=FALSE, warning=FALSE}
-# Fit ANOVA model
-anova_model <- aov(Flavor ~ Area + Temp + Size + Storage + Cooking, data = potato)
+# Q-Q Normal Plot of Residuals
+qqnorm(residuals(anova_model), main = "Q-Q Plot of Residuals")
+qqline(residuals(anova_model), col = "red")
 
-# Extract ANOVA summary
-anova_results <- tidy(anova_model) %>%
-  select(term, df, sumsq, meansq, statistic, p.value) %>%
-  rename(Term = term, `DF` = df, `Sum Sq` = sumsq, `Mean Sq` = meansq, `F Value` = statistic, `P Value` = p.value) %>%
-  mutate(across(where(is.numeric), ~ signif(.x, 2)))  # Round to 2 significant figures
+# Residuals vs Fitted Values
+plot(fitted(anova_model), residuals(anova_model),
+     main = "Residuals vs Fitted", xlab = "Fitted Values", ylab = "Residuals")
+abline(h = 0, col = "red", lty = 2)
 
-# Display ANOVA table
-kable(anova_results, digits = 2, caption = "ANOVA Results for Flavor Score", booktabs = TRUE, longtable = TRUE) %>%
-  kable_styling(latex_options = c("hold_position", "repeat_header")) %>%
-  row_spec(0, bold = TRUE, background = "lightgray")
 ```
 
-## Model Selection
+To assess whether the ANOVA assumptions hold, we examine residual diagnostics.
 
-We refine our model using stepwise selection based on Akaike’s Information Criterion (AIC). We see that the Size has a very large P value and thus can be removed from the model without compromising its predictive power.
+The Q–Q plot shows that the residuals follow the red line closely, especially in the center. That means the residuals are approximately normally distributed, which supports the normality assumption.
 
-```{r, echo=FALSE , message=FALSE, warning=FALSE}
-stepwise_model <- step(anova_model, trace = 0)  # Run stepwise selection quietly
+In the residuals vs fitted plot, the points are scattered randomly around zero with no clear pattern. That suggests the variance is roughly constant (homoscedasticity). There's no obvious curve, so the model seems appropriate.
 
-# Extract summary statistics
-stepwise_summary <- tidy(stepwise_model)
+Overall, the residual diagnostics support the assumptions of the ANOVA model.
 
-# Format and display the table
-stepwise_summary %>%
-  kable(
-    format = "latex", 
-    digits = 2, 
-    caption = "Stepwise Model Summary", 
-    longtable = TRUE, 
-    booktabs = TRUE  # Remove table lines
-  ) %>%
-  kable_styling(
-    latex_options = c("hold_position", "repeat_header"),
-    full_width = FALSE  # Prevent full-width expansion
-  ) %>%
-  row_spec(0, bold = TRUE, background = "lightgray")  # Rotate column headers to 90°
-```
-
-\newpage
-## Estimated Model with Numeric Coefficients
+## Final model
 
 The estimated model with numeric values is:
 
@@ -203,11 +275,9 @@ sanitize_latex <- function(name) {
   return(name)
 }
 
-# Fit linear model
-linear_model <- lm(Flavor ~ Area + Temp + Size + Storage + Cooking, data = potato)
 
 # Extract coefficients
-coeffs <- coef(linear_model)
+coeffs <- coef(model_step)
 coeff_values <- signif(coeffs, 2)  # Round to 2 significant digits
 variable_names <- names(coeffs)[-1]  # Exclude intercept
 variable_names <- sapply(variable_names, sanitize_latex)  # Apply sanitization
@@ -232,52 +302,48 @@ $$
 `r equation_text`
 $$
 
-## Model Diagnostics
 
-To assess whether the ANOVA assumptions hold, we examine residual diagnostics.
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Residuals from the final model
+res <- residuals(model_step)
 
-```{r, echo=FALSE, , message=FALSE, warning=FALSE}
-par(mfrow = c(1, 2))  # Arrange plots in one row
+# Compute error metrics
+MAE <- mean(abs(res))
+RMSE <- sqrt(mean(res^2))
+SD_resid <- sd(res)  # Standard deviation of residuals (often called sigma)
 
-# Q-Q Normal Plot of Residuals
-qqnorm(residuals(anova_model), main = "Q-Q Plot of Residuals")
-qqline(residuals(anova_model), col = "red")
+# Display results
+error_metrics <- data.frame(
+  Metric = c("Mean Error (should be ~0)", "Mean Absolute Error", "Root Mean Squared Error", "Std. Dev. of Residuals"),
+  Value = round(c(mean(res), MAE, RMSE, SD_resid), 3)
+)
 
-# Residuals vs Fitted Values
-plot(fitted(anova_model), residuals(anova_model),
-     main = "Residuals vs Fitted", xlab = "Fitted Values", ylab = "Residuals")
-abline(h = 0, col = "red", lty = 2)
+kable(error_metrics, caption = "Error Metrics for Final ANOVA Model") %>%
+  kable_styling(latex_options = c("hold_position"))
 
 ```
 
-The Q–Q plot shows that the residuals follow the red line closely, especially in the center. That means the residuals are approximately normally distributed, which supports the normality assumption.
-
-In the residuals vs fitted plot, the points are scattered randomly around zero with no clear pattern. That suggests the variance is roughly constant (homoscedasticity). There's no obvious funnel shape or curve, so the model seems appropriate.
-
-Overall, the residual diagnostics support the assumptions of the ANOVA model.
+\newpage 
 
 ## Conclusion
 
-This study analyzed the factors influencing the **flavor score** of Oregon-grown Russet potatoes using an **ANOVA model**. The key variables considered included **growing area, storage conditions, size and cooking methods**.  
+This study analyzed the factors linked to the **flavor score** of Oregon-grown Russet potatoes using an **ANOVA model**. The key variables considered included **growing area, storage conditions, size and cooking methods**.  
+At first an exploratory data analysis was conducted. It allowed to assess that the class where well balanced and that the Flavor score where well distributed. The model was then defined and fitted using Least Square. It was refined by removing parameters to minimize the AIC. Finally the model was assessed to ensure the required assumption held and was written numerically.
 
 ### **Main Findings**
 1. **Significant Factors**
-   - **Holding temperature (75°F vs. 40°F)** had the **largest effect** on flavor, with lower temperatures reducing flavor scores.  
-   - **Storage duration** influenced flavor, with **2- to 6-month storage improving flavor** compared to fresh potatoes.  
-   - **Cooking method** significantly affected flavor, with **boiling and high-temperature baking (450°F) resulting in lower scores**, while **baking at 350°F** yielded better results.  
-   - **Growing area (Southern vs. Central Oregon)** also had a **notable impact**.  
+   - **Holding temperature (75°F vs. 40°F)** had the strongest correlation with flavor, with temperatures positively linked to flavor scores.  
+   - **Storage duration** is linked to flavor, with 2 to 6 month storage having a stronger positive corellation with flavor compared to fresh potatoes.  
+   - **Cooking method** is also linked to flavor, with high-temperature baking (450°F) and steam cooking being negatively corellated with the flavor scores, while baking at 350°F** and mashed cooking was positively correlated.  
+   - **Growing in Central Oregon** was also linked positively with score.  
 
 2. **Insignificant Factor**
-   - **Potato size (Large vs. Medium)** had a very high p-value (\( p = 0.94 \)), indicating **no significant effect on flavor**. It was **removed from the final model** to improve simplicity.  
+   - **Potato size (Large vs. Medium)** was not corellated and was thud dropped when refinning the model.
 
 ### **Model Fit & Assumption Verification**
-- The **residual analysis** (Q-Q plot and residuals vs. fitted values) indicated that the model **reasonably meets normality and homoscedasticity assumptions**.  
-- The estimated residual standard deviation was **0.232**, confirming a **good model fit**.  
+- The **residual analysis** (Q-Q plot and residuals vs. fitted values) indicated that the model mets normality, homoscedasticity assumptions along with the erros being normally distributed and its mean zero. The root mean squared error was 0.22
+- The estimated residual standard deviation was **0.221**, confirming a **good model fit**.  
 
-### **Interpretation & Implications**
-- **Storage at moderate temperatures and baking at 350°F** maximizes potato flavor.  
-- **Cold storage (40°F) negatively affects flavor**, which may influence **storage and distribution practices**.  
-- **Cooking methods play a crucial role**; steaming and high-temperature baking should be avoided for better flavor retention.  
 
 # References
 \renewcommand\refname{}
